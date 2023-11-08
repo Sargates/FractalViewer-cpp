@@ -1,0 +1,28 @@
+{
+	"configurations": [
+		{
+			"name": "Linux",
+			"includePath": [
+				"${workspaceFolder}/**",
+				"/usr/include/SDL2/*"
+			],
+			"defines": [],
+			"compilerPath": "/usr/bin/make",
+			"cStandard": "c20",
+			"cppStandard": "c++20",
+			"intelliSenseMode": "${default}"
+		},
+		{
+			"name": "Windows",
+			"includePath": [
+				"${workspaceFolder}/**"
+			],
+			"defines": [],
+			"compilerPath": "/usr/bin/clang",
+			"cStandard": "c20",
+			"cppStandard": "c++20",
+			"intelliSenseMode": "linux-clang-x64"
+		}
+	],
+	"version": 4
+}
