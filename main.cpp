@@ -8,17 +8,19 @@
 #include <mutex>
 #include <SDL.h>
 
+using namespace std;
 
-std::mutex textureMutex;
+mutex textureMutex;
 SDL_Renderer* renderer;
 SDL_Texture* screenTexture;
 Uint32* pixels;
 
+
 const int screenWidth = 500;
 const int screenHeight = 400;
 const float aspectRatio = (float) screenWidth / (float) screenHeight;
-const double tenthRootOfTwo = std::pow(2, 1/10.0);
-const double oneOverTenthRootOfTwo = std::pow(2, -1.0/10.0);
+const double tenthRootOfTwo = pow(2, 1/10.0);
+const double oneOverTenthRootOfTwo = pow(2, -1.0/10.0);
 
 struct Camera2D {
 	double x;
@@ -29,33 +31,26 @@ struct Camera2D {
 	Camera2D(double initialX = 0.0f, double initialY = 0.0f, double initialScale = 1.0f)
 		: x(initialX), y(initialY), zoom(initialScale) {}
 
-	// Function to set the camera position
-	void setPosition(double newX, double newY) {
-		x = newX;
-		y = newY;
-	}
-
-	// Function to convert world coordinates to screen coordinates
 	void worldToScreen(double& worldX, double& worldY) {
-		worldX = worldX / zoom - x;
-		worldY = worldY / zoom - y;
+		worldX = worldX * zoom + x;
+		worldY = worldY * zoom + y;
 	}
 
-	// Function to convert screen coordinates to world coordinates
 	void screenToWorld(double& screenX, double& screenY) {
-		screenX = screenX * zoom + x;
-		screenY = screenY * zoom + y;
+		// Takes in normalized device coords
+		screenX = (screenX * aspectRatio / zoom) - x;
+		screenY = (screenY / zoom) - y;
 	}
 };
 
-Camera2D camera = Camera2D(0.0, 0.0, 1.0);
+Camera2D camera = Camera2D(0.0, 0.0, 0.5);
 
 
-int isInSet(std::complex<double> c) {
-	std::complex<double> z = (0, 0);
+int isInSet(complex<double> c) {
+	complex<double> z = (0, 0);
 	for (int i = 0; i <= 500; i++) {
-		z = std::pow(z, 2) + c;
-		if (std::norm(z) > 10) {
+		z = pow(z, 2) + c;
+		if (norm(z) > 10) {
 			return i;
 		}
 	}
@@ -66,11 +61,11 @@ void renderRegion(int startY, int endY) {
 	for (int x = 0; x < screenWidth; ++x) {
 		for (int y = startY; y < endY; ++y) {
 			
-			double worldX = std::lerp(-2.0*aspectRatio, 2.0*aspectRatio, (x/(float)screenWidth));
-			double worldY = std::lerp(-2.0, 2.0, (y/(float)screenHeight));
-			camera.worldToScreen(worldX, worldY);
+			double worldX = lerp(-1.0, 1.0, (x/(float)screenWidth));
+			double worldY = lerp(-1.0, 1.0, (y/(float)screenHeight));
+			camera.screenToWorld(worldX, worldY);
 			SDL_Color pixelColor;
-			int iters = isInSet(std::complex<double>(worldX, worldY));
+			int iters = isInSet(complex<double>(worldX, worldY));
 			pixelColor.r = (iters % 7) * 32;
 			pixelColor.g = (iters % 17) * 16;
 			pixelColor.b = (iters % 31) * 8;
@@ -89,7 +84,7 @@ void renderRegion(int startY, int endY) {
 
 void combineAndDisplayFrame() {
 
-	std::lock_guard<std::mutex> lock(textureMutex);
+	lock_guard<mutex> lock(textureMutex);
 
 	SDL_UpdateTexture(screenTexture, nullptr, pixels, screenWidth * sizeof(Uint32));
 
@@ -115,9 +110,10 @@ void combineAndDisplayFrame() {
 int main(int argc, char* argv[]) {
 
 	if (SDL_Init(SDL_INIT_EVERYTHING) > 0) {
-		std::cout << "SDL could not be initialized: " << SDL_GetError();
+		cout << "SDL could not be initialized: " << SDL_GetError();
 		return 2;
 	}
+	int mouseX, mouseY;
 	SDL_Window* window = nullptr;
 	float aspectRatio = (float)screenWidth / (float)screenHeight;
 	SDL_CreateWindowAndRenderer(screenWidth, screenHeight, 0, &window, &renderer);
@@ -125,28 +121,10 @@ int main(int argc, char* argv[]) {
 
 	pixels = new Uint32[screenWidth * screenHeight];
 
-	// const int numThreads = 32;
-	// std::vector<std::thread> threads;
-
-	// for (int i = 0; i < numThreads; ++i) {
-	// 	int startY = i * (screenHeight / numThreads);
-	// 	int endY = (i + 1) * (screenHeight / numThreads);
-
-	// 	threads.emplace_back(renderRegion, startY, endY);
-	// }
-
-	// for (auto& thread : threads) {
-	// 	thread.join();
-	// }
-
-	// combineAndDisplayFrame();
-
-	// std::cout << "Finished" << std::endl;
-
 	int quit = 0;
 	while (!quit) {
 		const int numThreads = 40; // Adjust based on your system and requirements
-		std::vector<std::thread> threads;
+		vector<thread> threads;
 
 		for (int i = 0; i < numThreads; ++i) {
 			int startY = i * (screenHeight / numThreads);
@@ -186,15 +164,49 @@ int main(int argc, char* argv[]) {
 				camera.y -= 0.1 / camera.zoom;
 			}
 			if (state[SDL_SCANCODE_A]) {
-				std::cout << camera.zoom << std::endl;
+				cout << camera.zoom << endl;
+			}
+			if (state[SDL_SCANCODE_P]) { // Debug key
+
+				SDL_GetMouseState(&mouseX, &mouseY);
+				double normDeviceX = (((double)mouseX /  (double)screenWidth) * 2 - 1);
+				double normDeviceY = (((double)mouseY / (double)screenHeight) * 2 - 1);
+
+				cout << (normDeviceX * aspectRatio / camera.zoom*tenthRootOfTwo) - camera.x << endl;
+				cout << (normDeviceX * aspectRatio / (camera.zoom/tenthRootOfTwo)) - camera.x << endl;
+				double deltaX = ((normDeviceX * aspectRatio / camera.zoom) - camera.x) - ((normDeviceX * aspectRatio / camera.zoom*tenthRootOfTwo) - camera.x);
+				double deltaY = ((normDeviceY				 / camera.zoom) - camera.y) - ((normDeviceY				  / camera.zoom*tenthRootOfTwo) - camera.y);
+
+
+
+				camera.screenToWorld(deltaX, deltaY);
+
+				cout << "deltaX: \t\t" << deltaX << "\tdeltaY: \t\t" << deltaY << endl;
+				cout << "Camera.x + deltaX: \t" << camera.x + deltaX << "\tCamera.y + deltaY: \t" << camera.y + deltaY << endl;
+				cout << endl;
 			}
 			if(event.type == SDL_MOUSEWHEEL) {
+				double zoomFactor = 1.0;
+				double deltaX = 0.0, deltaY = 0.0;
 				if(event.wheel.y > 0) {
-					camera.zoom *= tenthRootOfTwo;
+					zoomFactor = tenthRootOfTwo;
 				}
 				else if(event.wheel.y < 0) {
-					camera.zoom *= oneOverTenthRootOfTwo;
+					zoomFactor = oneOverTenthRootOfTwo;
 				}
+
+				SDL_GetMouseState(&mouseX, &mouseY);
+				double normDeviceX = (((double)mouseX /  (double)screenWidth) * 2 - 1);
+				double normDeviceY = (((double)mouseY / (double)screenHeight) * 2 - 1);
+
+				deltaX = ((normDeviceX * aspectRatio * (1 - zoomFactor) / (camera.zoom*zoomFactor)));
+				deltaY = ((normDeviceY * (1 - zoomFactor)				/ (camera.zoom*zoomFactor)));
+
+
+				camera.x += deltaX; camera.y += deltaY;
+
+
+				camera.zoom *= zoomFactor;
 			}
 
 		}

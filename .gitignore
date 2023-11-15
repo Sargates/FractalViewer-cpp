@@ -1,3 +1,4 @@
-.vscode
-tutorial.cpp
+.vscode/**
+ignore
 main
+devnotes.md
