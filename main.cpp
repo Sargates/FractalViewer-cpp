@@ -6,11 +6,12 @@
 #include <vector>
 #include <thread>
 #include <mutex>
+#define SDL_MAIN_HANDLED
 #include <SDL.h>
 
-using namespace std;
+// using namespace std;
 
-mutex textureMutex;
+std::mutex textureMutex;
 SDL_Renderer* renderer;
 SDL_Texture* screenTexture;
 Uint32* pixels;
@@ -19,15 +20,15 @@ Uint32* pixels;
 const int screenWidth = 500;
 const int screenHeight = 400;
 const float aspectRatio = (float) screenWidth / (float) screenHeight;
-const double tenthRootOfTwo = pow(2, 1/10.0);
-const double oneOverTenthRootOfTwo = pow(2, -1.0/10.0);
+const double tenthRootOfTwo = std::pow(2, 1/10.0);
+const double oneOverTenthRootOfTwo = std::pow(2, -1.0/10.0);
+const int MAX_ITERS = 500;
 
 struct Camera2D {
 	double x;
 	double y;
 	double zoom;
 
-	// Constructor to initialize the camera
 	Camera2D(double initialX = 0.0f, double initialY = 0.0f, double initialScale = 1.0f)
 		: x(initialX), y(initialY), zoom(initialScale) {}
 
@@ -37,7 +38,7 @@ struct Camera2D {
 	}
 
 	void screenToWorld(double& screenX, double& screenY) {
-		// Takes in normalized device coords
+		// Takes in normalized device coords (-1 <= [x,y] <= 1)
 		screenX = (screenX * aspectRatio / zoom) - x;
 		screenY = (screenY / zoom) - y;
 	}
@@ -46,10 +47,10 @@ struct Camera2D {
 Camera2D camera = Camera2D(0.0, 0.0, 0.5);
 
 
-int isInSet(complex<double> c) {
-	complex<double> z = (0, 0);
-	for (int i = 0; i <= 500; i++) {
-		z = pow(z, 2) + c;
+int isInSet(std::complex<double> c) {
+	std::complex<double> z = (0, 0);
+	for (int i = 0; i <= MAX_ITERS; i++) {
+		z = std::pow(z, 2) + c;
 		if (norm(z) > 10) {
 			return i;
 		}
@@ -60,12 +61,14 @@ int isInSet(complex<double> c) {
 void renderRegion(int startY, int endY) {
 	for (int x = 0; x < screenWidth; ++x) {
 		for (int y = startY; y < endY; ++y) {
-			
 			double worldX = lerp(-1.0, 1.0, (x/(float)screenWidth));
 			double worldY = lerp(-1.0, 1.0, (y/(float)screenHeight));
 			camera.screenToWorld(worldX, worldY);
 			SDL_Color pixelColor;
-			int iters = isInSet(complex<double>(worldX, worldY));
+			int iters = isInSet(std::complex<double>(worldX, worldY));
+			// pixelColor.r = 255.0 * iters / MAX_ITERS;
+			// pixelColor.g = 255.0 * iters / MAX_ITERS;
+			// pixelColor.b = 255.0 * iters / MAX_ITERS;
 			pixelColor.r = (iters % 7) * 32;
 			pixelColor.g = (iters % 17) * 16;
 			pixelColor.b = (iters % 31) * 8;
@@ -83,14 +86,12 @@ void renderRegion(int startY, int endY) {
 }
 
 void combineAndDisplayFrame() {
-
-	lock_guard<mutex> lock(textureMutex);
+	std::lock_guard<std::mutex> lock(textureMutex);
 
 	SDL_UpdateTexture(screenTexture, nullptr, pixels, screenWidth * sizeof(Uint32));
 
 	SDL_RenderClear(renderer);
 	SDL_RenderCopy(renderer, screenTexture, nullptr, nullptr);
-
 
 	// Draw crosshair so user knows where they are
 	int centerX = screenWidth/2;
@@ -110,7 +111,7 @@ void combineAndDisplayFrame() {
 int main(int argc, char* argv[]) {
 
 	if (SDL_Init(SDL_INIT_EVERYTHING) > 0) {
-		cout << "SDL could not be initialized: " << SDL_GetError();
+		std::cout << "SDL could not be initialized: " << SDL_GetError();
 		return 2;
 	}
 	int mouseX, mouseY;
@@ -123,23 +124,6 @@ int main(int argc, char* argv[]) {
 
 	int quit = 0;
 	while (!quit) {
-		const int numThreads = 40; // Adjust based on your system and requirements
-		vector<thread> threads;
-
-		for (int i = 0; i < numThreads; ++i) {
-			int startY = i * (screenHeight / numThreads);
-			int endY = (i + 1) * (screenHeight / numThreads);
-
-			threads.emplace_back(renderRegion, startY, endY);
-		}
-
-		for (auto& thread : threads) {
-			thread.join();
-		}
-
-		combineAndDisplayFrame();
-
-
 		SDL_Event event;
 		while (SDL_PollEvent(&event)) {
 			if (event.type == SDL_QUIT) {
@@ -164,26 +148,21 @@ int main(int argc, char* argv[]) {
 				camera.y -= 0.1 / camera.zoom;
 			}
 			if (state[SDL_SCANCODE_A]) {
-				cout << camera.zoom << endl;
+				std::cout << camera.zoom << std::endl;
 			}
 			if (state[SDL_SCANCODE_P]) { // Debug key
-
 				SDL_GetMouseState(&mouseX, &mouseY);
 				double normDeviceX = (((double)mouseX /  (double)screenWidth) * 2 - 1);
 				double normDeviceY = (((double)mouseY / (double)screenHeight) * 2 - 1);
 
-				cout << (normDeviceX * aspectRatio / camera.zoom*tenthRootOfTwo) - camera.x << endl;
-				cout << (normDeviceX * aspectRatio / (camera.zoom/tenthRootOfTwo)) - camera.x << endl;
-				double deltaX = ((normDeviceX * aspectRatio / camera.zoom) - camera.x) - ((normDeviceX * aspectRatio / camera.zoom*tenthRootOfTwo) - camera.x);
-				double deltaY = ((normDeviceY				 / camera.zoom) - camera.y) - ((normDeviceY				  / camera.zoom*tenthRootOfTwo) - camera.y);
-
-
+				double deltaX = ((normDeviceX * (1 - tenthRootOfTwo) / (camera.zoom*tenthRootOfTwo))) * aspectRatio;
+				double deltaY = ((normDeviceY * (1 - tenthRootOfTwo) / (camera.zoom*tenthRootOfTwo)));
 
 				camera.screenToWorld(deltaX, deltaY);
 
-				cout << "deltaX: \t\t" << deltaX << "\tdeltaY: \t\t" << deltaY << endl;
-				cout << "Camera.x + deltaX: \t" << camera.x + deltaX << "\tCamera.y + deltaY: \t" << camera.y + deltaY << endl;
-				cout << endl;
+				std::cout << "deltaX: \t\t" << deltaX << "\tdeltaY: \t\t" << deltaY << std::endl;
+				std::cout << "Camera.x + deltaX: \t" << camera.x + deltaX << "\tCamera.y + deltaY: \t" << camera.y + deltaY << std::endl;
+				std::cout << std::endl;
 			}
 			if(event.type == SDL_MOUSEWHEEL) {
 				double zoomFactor = 1.0;
@@ -202,14 +181,29 @@ int main(int argc, char* argv[]) {
 				deltaX = ((normDeviceX * aspectRatio * (1 - zoomFactor) / (camera.zoom*zoomFactor)));
 				deltaY = ((normDeviceY * (1 - zoomFactor)				/ (camera.zoom*zoomFactor)));
 
-
 				camera.x += deltaX; camera.y += deltaY;
-
 
 				camera.zoom *= zoomFactor;
 			}
-
 		}
+
+
+		const int numThreads = 40; // Adjust based on your system and requirements
+		std::vector<std::thread> threads;
+
+		for (int i = 0; i < numThreads; ++i) {
+			int startY = i * (screenHeight / numThreads);
+			int endY = (i + 1) * (screenHeight / numThreads);
+
+			threads.emplace_back(renderRegion, startY, endY);
+		}
+
+		for (auto& thread : threads) {
+			thread.join();
+		}
+
+		combineAndDisplayFrame();
+
 	}
 
 	delete[] pixels;
